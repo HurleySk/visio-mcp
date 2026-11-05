@@ -4,7 +4,7 @@ import json
 import logging
 import os
 
-from visio_mcp.com_runtime import classify_live, error_json, run_com
+from visio_mcp.com_runtime import classify_live, error_json, let_go, run_com
 from visio_mcp.errors import VisioError
 
 logger = logging.getLogger(__name__)
@@ -48,6 +48,7 @@ def _call(session, body, args, kwargs):
         err = classify_live(exc)
         err.rolled_back = session.rollback_scope()
         session.run_failure_cleanups()
+        let_go(exc)
         return _with_warnings(error_json(err), session.warnings)
     if session.abandoned:
         # The caller was already told this edit timed out.

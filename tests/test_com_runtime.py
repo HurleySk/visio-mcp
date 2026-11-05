@@ -2,6 +2,7 @@ import asyncio
 import json
 import threading
 import time
+import weakref
 
 import pytest
 
@@ -9,6 +10,7 @@ from tests.fakes import FakeApp, FakeClock, FakeComError, FakeConnector, FakeDoc
 from visio_mcp import com_runtime
 from visio_mcp.com_runtime import classify_live, current_session, error_json, find_document, get_visio_app, run_com
 from visio_mcp.errors import RPC_E_DISCONNECTED, VisioError
+from visio_mcp.live_tool import live_tool
 
 
 async def test_calls_run_on_the_visio_com_thread(connector):
@@ -170,6 +172,50 @@ async def test_error_json_drops_the_app_on_disconnect(connector):
     assert json.loads(text)["code"] == "disconnected"
     assert cached is None
     assert same is True
+
+
+class Token:
+    """Stands in for a Visio object made on the COM thread."""
+
+
+async def test_an_error_carries_no_com_objects_off_the_com_thread(connector):
+    made = []
+
+    def body(session):
+        token = Token()
+        made.append(weakref.ref(token))
+        raise VisioError("internal", "failed part-way")
+
+    with pytest.raises(VisioError) as caught:
+        await run_com(body)
+    assert caught.value.code == "internal"
+    assert made[0]() is None
+
+
+async def test_com_objects_are_freed_before_com_shuts_down():
+    # Freed after COM shuts down on its thread, a proxy corrupts COM for the whole process.
+    made, alive_at_exit = [], []
+
+    class Recording(FakeConnector):
+        def thread_exit(self):
+            alive_at_exit.extend(ref() is not None for ref in made)
+
+    @live_tool(mutates=False)
+    def body():
+        token = Token()
+        token.itself = token  # Only the garbage collector frees a cycle.
+        made.append(weakref.ref(token))
+        current_session().on_failure(lambda: token)
+        raise VisioError("not_found", "no such shape")
+
+    com_runtime.configure(Recording, sleep=lambda seconds: None)
+    try:
+        assert json.loads(await body())["code"] == "not_found"
+        worker = com_runtime._worker
+    finally:
+        com_runtime.reset()
+    worker._thread.join(2)
+    assert alive_at_exit == [False]
 
 
 async def test_dead_worker_thread_is_replaced():

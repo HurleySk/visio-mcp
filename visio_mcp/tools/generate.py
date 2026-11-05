@@ -2,7 +2,7 @@ import json
 from typing import Literal
 
 from visio_mcp.addressing import ShapeFinder, find_page, summarize
-from visio_mcp.building import MasterResolver, StencilPool, drawing_units, drop_node, glue_edge, lay_out
+from visio_mcp.building import MasterResolver, add_to_page, drawing_units, lay_out
 from visio_mcp.com_runtime import current_session, edit_doc, find_document
 from visio_mcp.live_tool import live_tool
 from visio_mcp.models import DiagramSpec, check_graph, check_spacing, resolve_layout
@@ -37,28 +37,7 @@ def _close_new_drawing(session, document):
 
 def _build(document, page, spec, layout):
     refs = MasterResolver(document.Application, document, drawing_units(document), spec.stencils).resolve_all(spec.nodes)
-    pool = StencilPool(document.Application, document)
-    try:
-        placeable = layout.style != "none"
-        shapes = {
-            node.key: drop_node(page, pool, node, refs[node.master], index, placeable)
-            for index, node in enumerate(spec.nodes)
-        }
-        warning = pool.skipped_warning()
-        if warning:
-            current_session().warnings.append(warning)
-    finally:
-        pool.close()
-    connectors = [
-        {"id": glue_edge(page, shapes[edge.from_], shapes[edge.to], edge).ID, "from": edge.from_, "to": edge.to}
-        for edge in spec.edges
-    ]
-    if placeable:
-        lay_out(page, layout.style, layout.route, layout.spacing)
-    fit = layout.fit_page if layout.fit_page is not None else placeable
-    if fit:
-        page.ResizeToFitContents()
-    return {key: shape.ID for key, shape in shapes.items()}, connectors
+    return add_to_page(document, page, spec.nodes, spec.edges, refs, layout, current_session().warnings)
 
 
 @live_tool(mutates=True, start="if_missing", timeout=120.0)

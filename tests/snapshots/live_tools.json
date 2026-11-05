@@ -128,11 +128,11 @@
                 "additionalProperties": false,
                 "properties": {
                   "from": {
-                    "description": "The key of the node it starts at.",
+                    "description": "The key of the node it starts at. In visio_add_elements, also an existing shape's ID, name or text.",
                     "type": "string"
                   },
                   "to": {
-                    "description": "The key of the node it ends at.",
+                    "description": "The key of the node it ends at, or as for from.",
                     "type": "string"
                   },
                   "text": {
@@ -435,6 +435,823 @@
       }
     },
     "annotations": {
+      "destructiveHint": false,
+      "readOnlyHint": false,
+      "title": "Add Visio Elements"
+    },
+    "description": "Add shapes and connectors to an existing page, as one Ctrl+Z step.\n\nnodes are as in visio_create_diagram. An edge's from and to name a new node's key, else an\nexisting shape's ID, name or exact text, so new nodes can join what's already there. Keys\nwin over existing shapes.\n\nPlacing: with x and y on every node, nothing else moves. Without them, the whole page is laid\nout again in the style it was last laid out with (else top_down), which moves existing shapes\ntoo. Edges alone move nothing unless layout is passed.\n\nReturns ids mapping your keys to shape IDs, the connectors, and issues found on the page.\nLook at the result with visio_get_page_image.",
+    "inputSchema": {
+      "properties": {
+        "nodes": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "key": {
+                    "description": "Your name for this node, which edges and the returned ids use.",
+                    "type": "string"
+                  },
+                  "master": {
+                    "description": "A master like 'BASFLO:Decision'. Find one with visio_find_masters.",
+                    "type": "string"
+                  },
+                  "text": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null
+                  },
+                  "data": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": {
+                          "type": "string"
+                        },
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Shape Data fields, by label."
+                  },
+                  "x": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Centre, in inches from the page's left. Only with layout style 'none'."
+                  },
+                  "y": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Centre, in inches from the page's bottom. Only with layout style 'none'."
+                  },
+                  "w": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Width in inches. Leave out to use the master's."
+                  },
+                  "h": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Height in inches. Setting it stops the shape growing to fit its text."
+                  },
+                  "fill": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Fill colour as '#RRGGBB'."
+                  }
+                },
+                "required": [
+                  "key",
+                  "master"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "edges": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "from": {
+                    "description": "The key of the node it starts at. In visio_add_elements, also an existing shape's ID, name or text.",
+                    "type": "string"
+                  },
+                  "to": {
+                    "description": "The key of the node it ends at, or as for from.",
+                    "type": "string"
+                  },
+                  "text": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null
+                  },
+                  "arrow": {
+                    "default": "end",
+                    "enum": [
+                      "end",
+                      "both",
+                      "none"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "from",
+                  "to"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "layout": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "style": {
+                  "default": "top_down",
+                  "description": "top_down and left_right give the cleanest results. radial and circular are weaker. none keeps each node's x and y.",
+                  "enum": [
+                    "top_down",
+                    "left_right",
+                    "radial",
+                    "circular",
+                    "none"
+                  ],
+                  "type": "string"
+                },
+                "route": {
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "flowchart",
+                        "tree",
+                        "right_angle",
+                        "straight"
+                      ],
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "Connector style. Defaults to flowchart, or straight for radial and circular."
+                },
+                "spacing": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "Gap between shapes in inches. Visio's default is 0.5."
+                },
+                "fit_page": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "Resize the page to fit its shapes. Defaults to true, or false for style 'none', since it moves shapes."
+                }
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "drawing": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "page": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "type": "object",
+      "additionalProperties": false
+    },
+    "name": "visio_add_elements",
+    "title": "Add Visio Elements"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "readOnlyHint": false,
+      "title": "Update Visio Shapes"
+    },
+    "description": "Change shapes' text, Shape Data, position, size or fill, as one Ctrl+Z step.\n\nEach update names a shape by ID, else exact name, else exact text, and sets only the fields\ngiven. x and y are the centre in inches from the page's bottom-left, and glued connectors\nfollow a moved shape. Every shape is found before anything changes.\n\nReturns each shape's ID, name, text and master afterwards. Check the ID and text are the ones\nyou meant, since Visio can reuse an ID after a delete.",
+    "inputSchema": {
+      "properties": {
+        "updates": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "shape": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ],
+                "description": "The shape's ID, else its exact name, else its exact text."
+              },
+              "text": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "data": {
+                "anyOf": [
+                  {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Shape Data fields to set, by label. A new label adds a field, and an empty value clears one."
+              },
+              "x": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "New centre, in inches from the page's left."
+              },
+              "y": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "New centre, in inches from the page's bottom."
+              },
+              "w": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Width in inches."
+              },
+              "h": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Height in inches. Setting it stops the shape growing to fit its text."
+              },
+              "fill": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Fill colour as '#RRGGBB'."
+              }
+            },
+            "required": [
+              "shape"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "drawing": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "page": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "updates"
+      ],
+      "type": "object",
+      "additionalProperties": false
+    },
+    "name": "visio_update_shapes",
+    "title": "Update Visio Shapes"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "destructiveHint": true,
+      "readOnlyHint": false,
+      "title": "Delete Visio Shapes"
+    },
+    "description": "Delete shapes, and the connectors glued to them, as one Ctrl+Z step.\n\nshapes are IDs, else exact names, else exact text. Deleting a container keeps the shapes in\nit, and deleting a group deletes the group's own members. Returns what was deleted, with the\nconnectors that went with it listed apart.",
+    "inputSchema": {
+      "properties": {
+        "shapes": {
+          "items": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "type": "array"
+        },
+        "drawing": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "page": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "shapes"
+      ],
+      "type": "object",
+      "additionalProperties": false
+    },
+    "name": "visio_delete_shapes",
+    "title": "Delete Visio Shapes"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "readOnlyHint": false,
+      "title": "Add Visio Container"
+    },
+    "description": "Put a titled container around shapes, as one Ctrl+Z step.\n\nshapes are IDs, else exact names, else exact text. The container is sized to fit them, and\nmoving it in Visio moves them too. master defaults to 'SDCONT:Plain'; find other styles with\nvisio_find_masters(\"container\"). Returns the container and the shape IDs it holds.",
+    "inputSchema": {
+      "properties": {
+        "shapes": {
+          "items": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "type": "array"
+        },
+        "title": {
+          "type": "string"
+        },
+        "master": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "drawing": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "page": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "shapes",
+        "title"
+      ],
+      "type": "object",
+      "additionalProperties": false
+    },
+    "name": "visio_add_container",
+    "title": "Add Visio Container"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "readOnlyHint": false,
+      "title": "Add Visio Page"
+    },
+    "description": "Add a page to a drawing, as one Ctrl+Z step. Pass its name as page in later calls.",
+    "inputSchema": {
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "drawing": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "type": "object",
+      "additionalProperties": false
+    },
+    "name": "visio_add_page",
+    "title": "Add Visio Page"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "readOnlyHint": false,
+      "title": "Update Visio Page"
+    },
+    "description": "Rename a page, set its size or theme, or fit it to its shapes, as one Ctrl+Z step.\n\nwidth and height are in inches. fit sets the size from the shapes, so it can't go with them.\ntheme is a name such as Office, Linear, Simple, Facet, Ion, Slice, Retrospect, Whisp, Organic,\nPencil or Whiteboard, ignoring case, or an index from Visio's gallery. 'None' or 0 removes it.\nReturns the page with its theme index, and issues found on it.",
+    "inputSchema": {
+      "properties": {
+        "page": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "width": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "height": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "fit": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "theme": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "drawing": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "type": "object",
+      "additionalProperties": false
+    },
+    "name": "visio_update_page",
+    "title": "Update Visio Page"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "destructiveHint": true,
+      "readOnlyHint": false,
+      "title": "Delete Visio Page"
+    },
+    "description": "Delete a page and everything on it, as one Ctrl+Z step.\n\npage is a name or a 1-based number. A drawing's only foreground page is refused, because\nVisio would wipe it and make a blank one.",
+    "inputSchema": {
+      "properties": {
+        "page": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "drawing": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "page"
+      ],
+      "type": "object",
+      "additionalProperties": false
+    },
+    "name": "visio_delete_page",
+    "title": "Delete Visio Page"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "readOnlyHint": false,
+      "title": "Undo in Visio"
+    },
+    "description": "Undo the last steps in Visio, like pressing Ctrl+Z. Each edit tool call is one step.\n\nVisio keeps one history for all its drawings, and the user's own edits are in it, so a step\ncan land in another drawing or take back something the user did. The shape and page counts\nper drawing, before and after, show where it landed. They don't show text or position\nchanges, so check with visio_get_page. Steps beyond the start of the history do nothing.",
+    "inputSchema": {
+      "properties": {
+        "steps": {
+          "default": 1,
+          "type": "integer"
+        }
+      },
+      "type": "object",
+      "additionalProperties": false
+    },
+    "name": "visio_undo",
+    "title": "Undo in Visio"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "readOnlyHint": false,
+      "title": "Redo in Visio"
+    },
+    "description": "Redo steps undone in Visio, like pressing Ctrl+Y.\n\nVisio keeps one history for all its drawings, so a step can land in another drawing. The\nshape and page counts per drawing, before and after, show where it landed. They don't show\ntext or position changes, so check with visio_get_page. Steps with nothing to redo do nothing.",
+    "inputSchema": {
+      "properties": {
+        "steps": {
+          "default": 1,
+          "type": "integer"
+        }
+      },
+      "type": "object",
+      "additionalProperties": false
+    },
+    "name": "visio_redo",
+    "title": "Redo in Visio"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
       "readOnlyHint": true,
       "title": "Diagnose Visio Page"
     },
@@ -572,7 +1389,7 @@
       "readOnlyHint": true,
       "title": "Read Visio Page"
     },
-    "description": "List a page's top-level shapes and connectors, one page of results at a time.\n\nShapes have centre x, y and size w, h in inches, from the bottom-left of the page.\nConnectors say which shape IDs they join in \"from\" and \"to\", where null means not glued.\nPass next_offset back as offset to continue. Use visio_get_shape for a shape's data.",
+    "description": "List a page's top-level shapes and connectors, one page of results at a time.\n\nShapes have centre x, y and size w, h in inches, from the bottom-left of the page.\nConnectors say which shape IDs they join in \"from\" and \"to\", where null means not glued.\nContainers list the shape IDs they hold in \"contains\".\nPass next_offset back as offset to continue. Use visio_get_shape for a shape's data.",
     "inputSchema": {
       "properties": {
         "offset": {
@@ -625,7 +1442,7 @@
       "readOnlyHint": true,
       "title": "Read Visio Shape"
     },
-    "description": "Read one shape in detail: position, Shape Data, connections, container and group members.\n\nshape is an ID, else an exact name, else exact text. cells adds ShapeSheet cells by name,\nsuch as \"FillForegnd\", with null for a cell the shape doesn't have.",
+    "description": "Read one shape in detail: position, Shape Data, connections, containers it's in, what it holds.\n\nshape is an ID, else an exact name, else exact text. cells adds ShapeSheet cells by name,\nsuch as \"FillForegnd\", with null for a cell the shape doesn't have.",
     "inputSchema": {
       "properties": {
         "shape": {

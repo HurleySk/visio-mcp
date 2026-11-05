@@ -4,7 +4,7 @@ import os
 import pytest
 from fastmcp import Client
 
-from tests.integration.helpers import dialogs_of, pid_of
+from tests.integration.helpers import FLOW, dialogs_of, pid_of
 from visio_mcp import building, events, server, stencil_index
 from visio_mcp.models import DiagramSpec
 from visio_mcp.tools import diagnose, generate
@@ -14,37 +14,7 @@ pytestmark = pytest.mark.visio
 VIS_MS_US = 2
 VIS_OPEN_RO_HIDDEN = 2 + 64
 VIS_ADD_STENCIL = 512
-VIS_TYPE_STENCIL = 2
 VIS_SECTION_USER = 242
-
-FLOW = {
-    "nodes": [
-        {"key": "start", "master": "BASFLO:Start/End", "text": "Start"},
-        {"key": "check", "master": "BASFLO:Decision", "text": "Approved?"},
-        {"key": "pay", "master": "BASFLO:Process", "text": "Pay"},
-        {"key": "reject", "master": "BASFLO:Process", "text": "Reject"},
-        {"key": "end", "master": "BASFLO:Start/End", "text": "End"},
-    ],
-    "edges": [
-        {"from": "start", "to": "check"},
-        {"from": "check", "to": "pay", "text": "yes"},
-        {"from": "check", "to": "reject", "text": "no"},
-        {"from": "pay", "to": "end"},
-        {"from": "reject", "to": "end"},
-    ],
-}
-
-
-@pytest.fixture
-def made(own_visio):
-    """Closes whatever drawings a test makes, and reports any left behind hidden."""
-    before = {own_visio.Documents(i).Name for i in range(1, own_visio.Documents.Count + 1)}
-    yield own_visio
-    for index in range(own_visio.Documents.Count, 0, -1):
-        document = own_visio.Documents(index)
-        if document.Name not in before and document.Type != VIS_TYPE_STENCIL:
-            document.Saved = True
-            document.Close()
 
 
 async def _create(**fields):
@@ -312,7 +282,7 @@ async def test_a_failed_build_leaves_nothing_behind(made, monkeypatch):
     def fail(*args, **kwargs):
         raise RuntimeError("layout went wrong")
 
-    monkeypatch.setattr(generate, "lay_out", fail)
+    monkeypatch.setattr(building, "lay_out", fail)
     result = await _create(**FLOW)
     assert result["rolled_back"] is True
     assert "layout went wrong" in result["error"]

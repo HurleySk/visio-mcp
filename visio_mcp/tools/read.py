@@ -9,6 +9,7 @@ VIS_SECTION_PROP = 243
 VIS_CUST_PROP_VALUE = 0
 VIS_CUST_PROP_LABEL = 2
 VIS_TYPE_GROUP = 2
+VIS_CONTAINER_FLAGS_DEFAULT = 0
 VIS_CONNECTED_INCOMING = 1
 VIS_CONNECTED_OUTGOING = 2
 MAX_PAGE_ROWS = 500
@@ -53,11 +54,25 @@ def _geometry(shape):
     }
 
 
+def container_members(shape):
+    """The IDs a container holds, or None if it isn't one. A container is a group to Visio."""
+    properties = shape.ContainerProperties
+    if properties is None:
+        return None
+    return list(properties.GetMemberShapes(VIS_CONTAINER_FLAGS_DEFAULT) or ())
+
+
 def _listing(shape):
     row = identity(shape)
     if shape.OneD:
         row["kind"] = "connector"
         row.update(connector_ends(shape))
+        return row
+    contains = container_members(shape)
+    if contains is not None:
+        row["kind"] = "container"
+        row["contains"] = contains
+        row.update(_geometry(shape))
     elif shape.Type == VIS_TYPE_GROUP:
         row["kind"] = "group"
         row["members"] = shape.Shapes.Count
@@ -133,6 +148,7 @@ def visio_get_page(offset: int = 0, limit: int = 100, drawing: str | None = None
 
     Shapes have centre x, y and size w, h in inches, from the bottom-left of the page.
     Connectors say which shape IDs they join in "from" and "to", where null means not glued.
+    Containers list the shape IDs they hold in "contains".
     Pass next_offset back as offset to continue. Use visio_get_shape for a shape's data.
     """
     if offset < 0 or limit < 1:
@@ -162,7 +178,7 @@ def visio_get_shape(
     drawing: str | None = None,
     page: int | str | None = None,
 ):
-    """Read one shape in detail: position, Shape Data, connections, container and group members.
+    """Read one shape in detail: position, Shape Data, connections, containers it's in, what it holds.
 
     shape is an ID, else an exact name, else exact text. cells adds ShapeSheet cells by name,
     such as "FillForegnd", with null for a cell the shape doesn't have.
@@ -179,7 +195,7 @@ def visio_get_shape(
         result["incoming"] = _ids(target.ConnectedShapes(VIS_CONNECTED_INCOMING, ""))
         result["outgoing"] = _ids(target.ConnectedShapes(VIS_CONNECTED_OUTGOING, ""))
     result["containers"] = _ids(target.MemberOfContainers)
-    if target.Type == VIS_TYPE_GROUP:
+    if result["kind"] == "group":
         members = target.Shapes
         result["member_shapes"] = [identity(members(index)) for index in range(1, members.Count + 1)]
     if cells:

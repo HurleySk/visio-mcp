@@ -4,6 +4,23 @@ import time
 
 from visio_mcp import com_runtime
 
+FLOW = {
+    "nodes": [
+        {"key": "start", "master": "BASFLO:Start/End", "text": "Start"},
+        {"key": "check", "master": "BASFLO:Decision", "text": "Approved?"},
+        {"key": "pay", "master": "BASFLO:Process", "text": "Pay"},
+        {"key": "reject", "master": "BASFLO:Process", "text": "Reject"},
+        {"key": "end", "master": "BASFLO:Start/End", "text": "End"},
+    ],
+    "edges": [
+        {"from": "start", "to": "check"},
+        {"from": "check", "to": "pay", "text": "yes"},
+        {"from": "check", "to": "reject", "text": "no"},
+        {"from": "pay", "to": "end"},
+        {"from": "reject", "to": "end"},
+    ],
+}
+
 
 def pids():
     listing = subprocess.run(

@@ -8,6 +8,7 @@ from tests.integration.helpers import launch_own, pid_of, pids
 from visio_mcp import com_runtime
 
 VIS_MS_US = 2
+VIS_TYPE_STENCIL = 2
 
 
 @pytest.fixture(autouse=True)
@@ -34,6 +35,18 @@ def own_visio():
     deadline = time.monotonic() + 30
     while pid in pids() and time.monotonic() < deadline:
         time.sleep(0.25)
+
+
+@pytest.fixture
+def made(own_visio):
+    """Closes whatever drawings a test makes."""
+    before = {own_visio.Documents(i).Name for i in range(1, own_visio.Documents.Count + 1)}
+    yield own_visio
+    for index in range(own_visio.Documents.Count, 0, -1):
+        document = own_visio.Documents(index)
+        if document.Name not in before and document.Type != VIS_TYPE_STENCIL:
+            document.Saved = True
+            document.Close()
 
 
 @pytest.fixture

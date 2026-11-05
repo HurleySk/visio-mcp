@@ -175,6 +175,12 @@ class StencilPool:
         self._skipped = []
 
     def drop(self, page, ref, x, y):
+        return self._guarded(ref, lambda master: page.Drop(master, x, y))
+
+    def drop_container(self, page, ref, selection):
+        return self._guarded(ref, lambda master: page.DropContainer(master, selection))
+
+    def _guarded(self, ref, place):
         """Some masters run an add-on when dropped, and its dialog would block this call until
         it timed out. Those alone drop with events off, so the rest still set themselves up."""
         master = self.master(ref)
@@ -182,12 +188,12 @@ class StencilPool:
         if key not in self._interactive:
             self._interactive[key] = _opens_something_on_drop(master.Shapes)
         if not self._interactive[key]:
-            return page.Drop(master, x, y)
+            return place(master)
         label = f"{ref.stem}:{ref.name}" if ref.stem else ref.name
         if label not in self._skipped:
             self._skipped.append(label)
         with events_off(self._app):
-            return page.Drop(master, x, y)
+            return place(master)
 
     def skipped_warning(self):
         if not self._skipped:
@@ -303,6 +309,40 @@ def glue_edge(page, begin, end, edge):
     if edge.text:
         connector.Text = edge.text
     return connector
+
+
+def add_to_page(document, page, nodes, edges, refs, layout, warnings, existing=None):
+    """Drop the nodes, glue the edges and lay out. An edge end is a new node's key, else a shape
+    in existing. Returns the new shapes' IDs by key and a row per connector."""
+    pool = StencilPool(document.Application, document)
+    placeable = layout.style != "none"
+    try:
+        shapes = {
+            node.key: drop_node(page, pool, node, refs[node.master], index, placeable)
+            for index, node in enumerate(nodes)
+        }
+        warning = pool.skipped_warning()
+        if warning:
+            warnings.append(warning)
+    finally:
+        pool.close()
+    ends = {**(existing or {}), **shapes}
+    connectors = [
+        {"id": glue_edge(page, ends[edge.from_], ends[edge.to], edge).ID, "from": edge.from_, "to": edge.to}
+        for edge in edges
+    ]
+    if placeable:
+        lay_out(page, layout.style, layout.route, layout.spacing)
+    fit = layout.fit_page if layout.fit_page is not None else placeable
+    if fit:
+        page.ResizeToFitContents()
+    return {key: shape.ID for key, shape in shapes.items()}, connectors
+
+
+def page_style(page):
+    """The style the page was last laid out with, else top_down."""
+    value = int(page.PageSheet.CellsU("PlaceStyle").ResultIU)
+    return next((style for style, number in PLACE_STYLES.items() if number == value), "top_down")
 
 
 def _route_style(style, route):

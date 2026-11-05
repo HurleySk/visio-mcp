@@ -28,8 +28,11 @@ class NodeSpec(_Spec):
 
 
 class EdgeSpec(_Spec):
-    from_: str = Field(alias="from", description="The key of the node it starts at.")
-    to: str = Field(description="The key of the node it ends at.")
+    from_: str = Field(
+        alias="from",
+        description="The key of the node it starts at. In visio_add_elements, also an existing shape's ID, name or text.",
+    )
+    to: str = Field(description="The key of the node it ends at, or as for from.")
     text: str | None = None
     arrow: Literal["end", "both", "none"] = "end"
 
@@ -65,8 +68,47 @@ class DiagramSpec(_Spec):
     return_image: bool = True
 
 
-def check_graph(nodes, edges):
-    """Everything about the nodes and edges that can be wrong without looking at Visio."""
+class ShapeUpdate(_Spec):
+    shape: int | str = Field(description="The shape's ID, else its exact name, else its exact text.")
+    text: str | None = None
+    data: dict[str, str] | None = Field(
+        default=None,
+        description="Shape Data fields to set, by label. A new label adds a field, and an empty value clears one.",
+    )
+    x: float | None = Field(default=None, description="New centre, in inches from the page's left.")
+    y: float | None = Field(default=None, description="New centre, in inches from the page's bottom.")
+    w: float | None = Field(default=None, description="Width in inches.")
+    h: float | None = Field(default=None, description="Height in inches. Setting it stops the shape growing to fit its text.")
+    fill: str | None = Field(default=None, description="Fill colour as '#RRGGBB'.")
+
+
+CHANGES = ("text", "data", "x", "y", "w", "h", "fill")
+
+
+def _check_look(label, item):
+    if item.fill is not None and not COLOUR.match(item.fill):
+        raise ValueError(f"{label}: fill must look like '#RRGGBB', not '{item.fill}'.")
+    for size in (item.w, item.h):
+        if size is not None and size <= 0:
+            raise ValueError(f"{label}: w and h must be greater than 0.")
+    if item.data and not all(item.data):
+        raise ValueError(f"{label}: a Shape Data label can't be empty.")
+
+
+def check_updates(updates):
+    if not updates:
+        raise ValueError("Pass at least one update.")
+    for update in updates:
+        label = f"Shape {update.shape!r}"
+        if all(getattr(update, field) is None for field in CHANGES):
+            raise ValueError(f"{label}: the update changes nothing. Set one of {', '.join(CHANGES)}.")
+        _check_look(label, update)
+
+
+def check_graph(nodes, edges, existing=False):
+    """Everything about the nodes and edges that can be wrong without looking at Visio.
+
+    With existing, an edge end that isn't a key is left for the caller to find on the page."""
     keys = set()
     for node in nodes:
         if not node.key:
@@ -74,13 +116,9 @@ def check_graph(nodes, edges):
         if node.key in keys:
             raise ValueError(f"Two nodes use the key '{node.key}'. Keys must be unique.")
         keys.add(node.key)
-        if node.fill is not None and not COLOUR.match(node.fill):
-            raise ValueError(f"Node '{node.key}': fill must look like '#RRGGBB', not '{node.fill}'.")
-        for size in (node.w, node.h):
-            if size is not None and size <= 0:
-                raise ValueError(f"Node '{node.key}': w and h must be greater than 0.")
-        if node.data and not all(node.data):
-            raise ValueError(f"Node '{node.key}': a Shape Data label can't be empty.")
+        _check_look(f"Node '{node.key}'", node)
+    if existing:
+        return
     for edge in edges:
         for end in (edge.from_, edge.to):
             if end not in keys:

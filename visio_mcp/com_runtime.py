@@ -1,5 +1,6 @@
 import asyncio
 import concurrent.futures
+import gc
 import json
 import logging
 import os
@@ -7,6 +8,7 @@ import queue
 import subprocess
 import threading
 import time
+import traceback
 import unicodedata
 
 from visio_mcp import events
@@ -217,6 +219,13 @@ class VisioSession:
     def drop(self):
         self._app = None
 
+    def close(self):
+        """Let go of every Visio object this session holds, before its thread shuts COM down."""
+        self._app = None
+        self._scope = None
+        self._on_failure = []
+        self.last_error = None
+
     def prepare(self, start):
         """Apply a tool's start policy: never, if_missing or report."""
         self.attach_error = None
@@ -314,10 +323,10 @@ class VisioSession:
         """Open this call's undo scope. Later calls in the same tool call share it."""
         if self._scope is not None:
             return
-        self._close_leftover_scope(app)
+        self.close_leftover_scope(app)
         self._scope = (app, app.BeginUndoScope(self._label))
 
-    def _close_leftover_scope(self, app):
+    def close_leftover_scope(self, app):
         # Scopes outlive the client that opened them, and any edit made while one
         # is open joins it. Commit, because a rollback would take the user's edits too.
         deadline = _clock() + SCOPE_WAIT
@@ -442,6 +451,7 @@ class ComWorker:
                     session.prepare(start)
                     future.set_result(fn(session))
                 except BaseException as exc:
+                    let_go(exc)
                     future.set_exception(exc)
         except Exception:
             logger.exception("visio-com worker stopped")
@@ -449,11 +459,31 @@ class ComWorker:
             self.poison()
             _local.session = None
             if session is not None:
-                session.drop()
+                session.close()
+            # A cycle is only freed by the collector, so free any holding a Visio object
+            # now, while COM still runs on this thread.
+            gc.collect()
             try:
                 self._connector.thread_exit()
             except Exception:
                 pass
+
+
+def let_go(exc):
+    """Clear the local variables held by an exception's traceback. Call it on the COM thread.
+
+    Those locals are mostly Visio objects. Kept, they are freed later by whichever thread
+    collects garbage, which may be after their thread has shut COM down. Releasing a proxy
+    then corrupts COM for the whole process: later calls fail with RPC errors, then crash.
+    """
+    pending, seen = [exc], set()
+    while pending:
+        current = pending.pop()
+        if current is None or id(current) in seen:
+            continue
+        seen.add(id(current))
+        traceback.clear_frames(current.__traceback__)
+        pending += [current.__cause__, current.__context__]
 
 
 def _timeout_error(message, *, applied=False):

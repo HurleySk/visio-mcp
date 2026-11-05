@@ -23,6 +23,13 @@ class FakeCell:
         self.ResultIU = value
 
 
+class FakePageSheet:
+    """What a top-level shape's ContainingShape is."""
+
+    ID = 0
+    Type = 1
+
+
 class FakeShape:
     def __init__(self, id_, name, text="", master=None):
         self.ID = id_
@@ -33,6 +40,8 @@ class FakeShape:
         self.OneD = 0
         self.Type = 3
         self.MemberOfContainers = ()
+        self.ContainerProperties = None
+        self.ContainingShape = FakePageSheet()
         self.guid_flags = []
 
     def CellsU(self, name):
@@ -72,6 +81,7 @@ class FakePage:
         self.Name = name
         self.NameU = name
         self.Index = index
+        self.Background = 0
         self.Shapes = FakeShapes(list(shapes))
         self.PageSheet = FakeShape(0, "ThePage")
         self.exports = []

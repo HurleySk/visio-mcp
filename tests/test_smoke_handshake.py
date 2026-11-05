@@ -22,6 +22,10 @@ def test_tool_schemas_match_snapshot():
     assert actual == expected
 
 
+def test_tool_count_is_25():
+    assert TOOL_COUNT == 25
+
+
 def test_console_script_starts_fast_and_exits_clean():
     handshake(CONSOLE_SCRIPT)
     result = handshake(CONSOLE_SCRIPT)
