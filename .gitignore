@@ -1,0 +1,22 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Editors
+.idea
+.vscode
+
+# Drawings and exports made while testing by hand
+*.vsdx
+*.vsd
+*.vssx
+*.vstx
+*.pdf
+scratch/

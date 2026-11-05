@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "visio-mcp"
+version = "0.1.0"
+description = "MCP server for generating, editing and reading diagrams in Microsoft Visio on Windows (COM)"
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [
+    {name = "HurleySk"},
+]
+keywords = ["mcp", "visio", "microsoft-visio", "com-automation", "diagrams", "claude"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+]
+requires-python = ">=3.11"
+dependencies = [
+    "fastmcp>=4.0.5,<5",
+    "pywin32>=306; sys_platform == 'win32'",
+    "Pillow>=10.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+    "pytest-asyncio>=0.24",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+pythonpath = ["."]
+markers = ["visio: needs a real Microsoft Visio, and opens scratch drawings in it"]
+addopts = "-m 'not visio'"
+
+[project.urls]
+"Homepage" = "https://github.com/HurleySk/visio-mcp"
+
+[tool.hatch.build.targets.wheel]
+packages = ["visio_mcp"]
+
+[project.scripts]
+visio-mcp = "visio_mcp.server:run"
