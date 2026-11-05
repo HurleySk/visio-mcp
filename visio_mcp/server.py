@@ -23,10 +23,16 @@ def register_tools():
     if _registered:
         return
     _registered = True
-    from visio_mcp.tools import files, masters
+    from visio_mcp.tools import files, image, masters, read
 
     _add(masters.visio_find_masters, "Find Visio Masters")
     _add(masters.visio_list_templates, "List Visio Templates")
+    _add(read.visio_list_open, "List Open Visio Drawings")
+    _add(read.visio_get_page, "Read Visio Page")
+    _add(read.visio_get_shape, "Read Visio Shape")
+    _add(read.visio_find_shapes, "Find Visio Shapes")
+    _add(read.visio_get_selection, "Read Visio Selection")
+    _add(image.visio_get_page_image, "Get Visio Page Image")
     _add(files.visio_new_drawing, "New Visio Drawing")
     _add(files.visio_open_drawing, "Open Visio Drawing")
     _add(files.visio_save, "Save Visio Drawing", destructive=True)

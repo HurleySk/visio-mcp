@@ -76,6 +76,303 @@
       }
     },
     "annotations": {
+      "readOnlyHint": true,
+      "title": "List Open Visio Drawings"
+    },
+    "description": "List the drawings open in Visio, saying which is active. Never starts Visio.\n\nReports running=false if Visio isn't running. Includes saved drawings in other Visio\nwindows where Windows lets them be reached.",
+    "inputSchema": {
+      "properties": {},
+      "type": "object",
+      "additionalProperties": false
+    },
+    "name": "visio_list_open",
+    "title": "List Open Visio Drawings"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "title": "Read Visio Page"
+    },
+    "description": "List a page's top-level shapes and connectors, one page of results at a time.\n\nShapes have centre x, y and size w, h in inches, from the bottom-left of the page.\nConnectors say which shape IDs they join in \"from\" and \"to\", where null means not glued.\nPass next_offset back as offset to continue. Use visio_get_shape for a shape's data.",
+    "inputSchema": {
+      "properties": {
+        "offset": {
+          "default": 0,
+          "type": "integer"
+        },
+        "limit": {
+          "default": 100,
+          "type": "integer"
+        },
+        "drawing": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "page": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "type": "object",
+      "additionalProperties": false
+    },
+    "name": "visio_get_page",
+    "title": "Read Visio Page"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "title": "Read Visio Shape"
+    },
+    "description": "Read one shape in detail: position, Shape Data, connections, container and group members.\n\nshape is an ID, else an exact name, else exact text. cells adds ShapeSheet cells by name,\nsuch as \"FillForegnd\", with null for a cell the shape doesn't have.",
+    "inputSchema": {
+      "properties": {
+        "shape": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "cells": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "drawing": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "page": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "shape"
+      ],
+      "type": "object",
+      "additionalProperties": false
+    },
+    "name": "visio_get_shape",
+    "title": "Read Visio Shape"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "title": "Find Visio Shapes"
+    },
+    "description": "Find a page's top-level shapes by text (part of it, ignoring case), master name, or Shape Data.\n\nFilters combine. data matches a field's label or row name against an exact value,\nignoring case. Returns at most 200 shapes with the total found.",
+    "inputSchema": {
+      "properties": {
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "master": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "data": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "drawing": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "page": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "type": "object",
+      "additionalProperties": false
+    },
+    "name": "visio_find_shapes",
+    "title": "Find Visio Shapes"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "title": "Read Visio Selection"
+    },
+    "description": "Read what's selected in the active Visio window, so you can act on what the user points at.",
+    "inputSchema": {
+      "properties": {},
+      "type": "object",
+      "additionalProperties": false
+    },
+    "name": "visio_get_selection",
+    "title": "Read Visio Selection"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "title": "Get Visio Page Image"
+    },
+    "description": "Get a PNG of a page, to check how a diagram looks. Doesn't change focus or the drawing.\n\nThe image is cropped to the shapes, and its longest side is at most max_px, unless a very\nlarge page needs more to stay legible. annotate_ids badges each shape with its ID.",
+    "inputSchema": {
+      "properties": {
+        "max_px": {
+          "default": 1400,
+          "type": "integer"
+        },
+        "annotate_ids": {
+          "default": false,
+          "type": "boolean"
+        },
+        "drawing": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "page": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "type": "object",
+      "additionalProperties": false
+    },
+    "name": "visio_get_page_image",
+    "title": "Get Visio Page Image"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
       "destructiveHint": false,
       "readOnlyHint": false,
       "title": "New Visio Drawing"

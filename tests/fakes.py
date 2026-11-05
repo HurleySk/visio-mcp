@@ -16,6 +16,11 @@ class FakeMaster:
         self.NameU = name
 
 
+class FakeCell:
+    def __init__(self, value=0.0):
+        self.ResultIU = value
+
+
 class FakeShape:
     def __init__(self, id_, name, text="", master=None):
         self.ID = id_
@@ -23,6 +28,23 @@ class FakeShape:
         self.NameU = name
         self.Text = text
         self.Master = FakeMaster(master) if master else None
+        self.OneD = 0
+        self.Type = 3
+        self.MemberOfContainers = ()
+        self.guid_flags = []
+
+    def CellsU(self, name):
+        return FakeCell(float(self.ID))
+
+    def UniqueID(self, flag):
+        self.guid_flags.append(flag)
+        return ""
+
+    def SectionExists(self, section, flag):
+        return False
+
+    def ConnectedShapes(self, flag, category):
+        return ()
 
 
 class FakeShapes:
@@ -49,6 +71,7 @@ class FakePage:
         self.NameU = name
         self.Index = index
         self.Shapes = FakeShapes(list(shapes))
+        self.PageSheet = FakeShape(0, "ThePage")
         self.exports = []
 
     def Export(self, path):
