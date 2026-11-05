@@ -1,1 +1,306 @@
-[]
+[
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "title": "Find Visio Masters"
+    },
+    "description": "Search Visio's installed shapes for masters to use in a diagram.\n\nMatches master names first, then stencil titles and keywords, so \"flowchart decision\"\nfinds BASFLO:Decision. Pass stencil alone to list one stencil's masters. Use the returned\n\"master\" value in visio_create_diagram and visio_add_elements. Does not need Visio running.",
+    "inputSchema": {
+      "properties": {
+        "query": {
+          "default": "",
+          "type": "string"
+        },
+        "stencil": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "limit": {
+          "default": 25,
+          "type": "integer"
+        }
+      },
+      "type": "object",
+      "additionalProperties": false
+    },
+    "name": "visio_find_masters",
+    "title": "Find Visio Masters"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "title": "List Visio Templates"
+    },
+    "description": "List Visio's installed templates, optionally filtered by words in their title or keywords.\n\nPass the returned \"template\" value to visio_new_drawing or visio_create_diagram.\nDoes not need Visio running.",
+    "inputSchema": {
+      "properties": {
+        "query": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "type": "object",
+      "additionalProperties": false
+    },
+    "name": "visio_list_templates",
+    "title": "List Visio Templates"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "readOnlyHint": false,
+      "title": "New Visio Drawing"
+    },
+    "description": "Create a new drawing, starting a visible Visio if none is running.\n\ntemplate is a name from visio_list_templates or the absolute path of a template file.\nOmit it for a blank drawing. units picks US or metric paper and shapes.",
+    "inputSchema": {
+      "properties": {
+        "template": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "units": {
+          "anyOf": [
+            {
+              "enum": [
+                "us",
+                "metric"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "type": "object",
+      "additionalProperties": false
+    },
+    "name": "visio_new_drawing",
+    "title": "New Visio Drawing"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "readOnlyHint": false,
+      "title": "Open Visio Drawing"
+    },
+    "description": "Open a saved drawing, starting a visible Visio if none is running.\n\nIf it's already open, returns that one with already_open=true, even if it was opened\nwith different access. Check read_only in the result.",
+    "inputSchema": {
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "read_only": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object",
+      "additionalProperties": false
+    },
+    "name": "visio_open_drawing",
+    "title": "Open Visio Drawing"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "destructiveHint": true,
+      "readOnlyHint": false,
+      "title": "Save Visio Drawing"
+    },
+    "description": "Save a drawing, or save a copy to a new absolute path and continue in that copy.\n\nRefuses to replace another file unless overwrite is true. A read-only drawing can only\nbe saved to a new path, and the result is writable.",
+    "inputSchema": {
+      "properties": {
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "overwrite": {
+          "default": false,
+          "type": "boolean"
+        },
+        "drawing": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "type": "object",
+      "additionalProperties": false
+    },
+    "name": "visio_save",
+    "title": "Save Visio Drawing"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "destructiveHint": true,
+      "readOnlyHint": false,
+      "title": "Export Visio Drawing"
+    },
+    "description": "Export to an absolute path as PNG, JPG, SVG or PDF. The format comes from the extension.\n\nImages export one page: the named one, else the one on screen. PDF exports the named\npage, else every page. Refuses to replace a file unless overwrite is true.",
+    "inputSchema": {
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "format": {
+          "anyOf": [
+            {
+              "enum": [
+                "png",
+                "jpg",
+                "svg",
+                "pdf"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "overwrite": {
+          "default": false,
+          "type": "boolean"
+        },
+        "drawing": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "page": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object",
+      "additionalProperties": false
+    },
+    "name": "visio_export",
+    "title": "Export Visio Drawing"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "destructiveHint": true,
+      "readOnlyHint": false,
+      "title": "Close Visio Drawing"
+    },
+    "description": "Close a drawing. Visio itself stays open.\n\nRefuses if there are unsaved changes unless discard is true, which loses them and\nmust name the drawing, so it can't take whichever drawing happens to be active.",
+    "inputSchema": {
+      "properties": {
+        "discard": {
+          "default": false,
+          "type": "boolean"
+        },
+        "drawing": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "type": "object",
+      "additionalProperties": false
+    },
+    "name": "visio_close_drawing",
+    "title": "Close Visio Drawing"
+  }
+]

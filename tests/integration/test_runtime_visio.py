@@ -1,59 +1,18 @@
-"""Runtime behaviour against real Visio.
-
-Undo scopes and the undo stack are app-wide, so these tests never touch a Visio
-the user has open. They start their own instance and check that attach reached it.
-"""
-import asyncio
 import json
-import subprocess
 import threading
-import time
 
 import pytest
 
+from tests.integration.conftest import VIS_MS_US
+from tests.integration.helpers import launch_own, pid_of, pids, until
 from visio_mcp import com_runtime
 from visio_mcp.com_runtime import NO_SCOPE, current_session, drawings_in, edit_doc
 from visio_mcp.live_tool import live_tool
 
 pytestmark = pytest.mark.visio
 
-VIS_MS_US = 2
 VIS_OPEN_RO = 2
 VIS_CMD_PAGE_SETUP = 1076
-
-
-def _pids():
-    listing = subprocess.run(
-        ["tasklist", "/FI", "IMAGENAME eq VISIO.EXE", "/FO", "CSV", "/NH"],
-        capture_output=True,
-        text=True,
-    ).stdout
-    return {int(line.split('","')[1]) for line in listing.splitlines() if "VISIO.EXE" in line}
-
-
-def _pid_of(app):
-    import win32process
-
-    return win32process.GetWindowThreadProcessId(app.WindowHandle32)[1]
-
-
-def _launch_own():
-    """Start a new instance and return it, once attach reaches that instance."""
-    connector = com_runtime.Win32Connector()
-    before = _pids()
-    connector.launch()
-    deadline = time.monotonic() + 60
-    while time.monotonic() < deadline:
-        new = _pids() - before
-        if new:
-            try:
-                app = connector.attach()
-                if _pid_of(app) in new:
-                    return app
-            except Exception:
-                pass
-        time.sleep(0.5)
-    raise AssertionError("attach did not reach the instance these tests started")
 
 
 def _dialogs_of(pid):
@@ -73,15 +32,6 @@ def _dialogs_of(pid):
 
     win32gui.EnumWindows(visit, None)
     return found
-
-
-async def _until(predicate, seconds=30):
-    deadline = time.monotonic() + seconds
-    while time.monotonic() < deadline:
-        if predicate():
-            return
-        await asyncio.sleep(0.1)
-    raise AssertionError("condition not met in time")
 
 
 @live_tool(mutates=False)
@@ -105,25 +55,18 @@ def visio_draw_two(drawing, fail=False):
     return json.dumps({"count": page.Shapes.Count})
 
 
-@pytest.fixture(autouse=True)
-def fresh_runtime():
-    com_runtime.reset()
-    yield
-    com_runtime.reset()
-
-
 async def test_read_tool_starts_nothing_with_no_visio():
-    if _pids():
+    if pids():
         pytest.skip("Visio is running")
     result = json.loads(await visio_names())
     assert result["code"] == "visio_not_running"
-    assert not _pids()
+    assert not pids()
 
 
 async def test_if_missing_starts_a_visible_visio():
     import pythoncom
 
-    if _pids():
+    if pids():
         pytest.skip("Visio is running")
     pythoncom.CoInitialize()
     assert json.loads(await visio_starting()) == {"docs": 0}
@@ -131,29 +74,7 @@ async def test_if_missing_starts_a_visible_visio():
     assert app.Visible
     app.Quit()
     del app
-    await _until(lambda: not _pids())
-
-
-@pytest.fixture(scope="module")
-def own_visio():
-    import pythoncom
-
-    pythoncom.CoInitialize()
-    app = _launch_own()
-    yield app
-    for index in range(app.Documents.Count, 0, -1):
-        app.Documents(index).Saved = True
-    app.Quit()
-    del app
-    pythoncom.CoUninitialize()
-
-
-@pytest.fixture
-def scratch(own_visio):
-    document = own_visio.Documents.AddEx("", VIS_MS_US, 0)
-    yield document
-    document.Saved = True
-    document.Close()
+    await until(lambda: not pids())
 
 
 async def test_attach_to_user_instance(scratch):
@@ -204,9 +125,9 @@ async def test_timed_out_edit_rolls_back_for_real(scratch):
     assert scratch.Pages(1).Shapes.Count == 1
 
     release.set()
-    await _until(lambda: scratch.Pages(1).Shapes.Count == 0)
-    await _until(lambda: scratch.Application.CurrentScope == NO_SCOPE)
-    await _until(lambda: all(future.done() for future in com_runtime._stuck_edits))
+    await until(lambda: scratch.Pages(1).Shapes.Count == 0)
+    await until(lambda: scratch.Application.CurrentScope == NO_SCOPE)
+    await until(lambda: all(future.done() for future in com_runtime._stuck_edits))
     assert json.loads(await visio_draw_two(scratch.Name)) == {"count": 2}
 
 
@@ -248,7 +169,7 @@ async def test_open_dialog_is_reported_as_modal_dialog(scratch, own_visio):
     import win32con
     import win32gui
 
-    pid = _pid_of(own_visio)
+    pid = pid_of(own_visio)
 
     def open_dialog():
         pythoncom.CoInitialize()
@@ -262,7 +183,7 @@ async def test_open_dialog_is_reported_as_modal_dialog(scratch, own_visio):
     opener = threading.Thread(target=open_dialog, daemon=True)
     opener.start()
     try:
-        await _until(lambda: _dialogs_of(pid))
+        await until(lambda: _dialogs_of(pid))
         result = json.loads(await visio_names())
         assert result["code"] == "modal_dialog"
         assert result["retryable"] is True
@@ -279,7 +200,7 @@ async def test_saved_drawing_in_an_older_instance_is_reached(own_visio, tmp_path
     path = str(tmp_path / "older.vsdx")
     document = own_visio.Documents.AddEx("", VIS_MS_US, 0)
     document.SaveAs(path)
-    newer = _launch_own()
+    newer = launch_own()
     try:
         assert json.loads(await visio_draw_two(path)) == {"count": 2}
         assert document.Pages(1).Shapes.Count == 2

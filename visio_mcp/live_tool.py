@@ -1,3 +1,4 @@
+import asyncio
 import functools
 import json
 import logging
@@ -90,6 +91,22 @@ def _invoke(session, body, args, kwargs, mutates):
         replacement.rolled_back = err.rolled_back
         return json.dumps(replacement.to_dict(), ensure_ascii=False)
     return result
+
+
+def offline_tool(body):
+    """Run a tool body that doesn't need Visio on a thread pool, away from the COM thread."""
+
+    @functools.wraps(body)
+    async def tool(*args, **kwargs):
+        try:
+            return await asyncio.to_thread(body, *args, **kwargs)
+        except Exception as exc:
+            return error_json(exc)
+
+    tool.sync = body
+    tool.mutates = False
+    tool.start = None
+    return tool
 
 
 def live_tool(*, mutates, start="never", timeout=None):

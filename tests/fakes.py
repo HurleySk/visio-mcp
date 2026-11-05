@@ -11,19 +11,110 @@ class FakeComError(Exception):
         self.excepinfo = None
 
 
-class FakeDoc:
-    def __init__(self, name="flow.vsdx", folder="C:\\docs", type_=1, read_only=0):
+class FakeMaster:
+    def __init__(self, name):
+        self.NameU = name
+
+
+class FakeShape:
+    def __init__(self, id_, name, text="", master=None):
+        self.ID = id_
         self.Name = name
-        self.FullName = f"{folder}\\{name}"
+        self.NameU = name
+        self.Text = text
+        self.Master = FakeMaster(master) if master else None
+
+
+class FakeShapes:
+    def __init__(self, shapes):
+        self._shapes = shapes
+
+    @property
+    def Count(self):
+        return len(self._shapes)
+
+    def __call__(self, index):
+        return self._shapes[index - 1]
+
+    def ItemFromID(self, shape_id):
+        for shape in self._shapes:
+            if shape.ID == shape_id:
+                return shape
+        raise FakeComError(-2147352567, "Invalid sheet identifier.")
+
+
+class FakePage:
+    def __init__(self, name="Page-1", index=1, shapes=()):
+        self.Name = name
+        self.NameU = name
+        self.Index = index
+        self.Shapes = FakeShapes(list(shapes))
+        self.exports = []
+
+    def Export(self, path):
+        self.exports.append(path)
+
+
+class FakePages:
+    def __init__(self, pages):
+        self._pages = pages
+
+    @property
+    def Count(self):
+        return len(self._pages)
+
+    def __call__(self, index):
+        return self._pages[index - 1]
+
+
+class FakeDoc:
+    def __init__(self, name="flow.vsdx", folder="C:\\docs", type_=1, read_only=0, pages=None):
+        self.Name = name
+        self.FullName = f"{folder}\\{name}" if folder else name
+        self.Path = f"{folder}\\" if folder else ""
         self.Saved = True
         self.Type = type_
         self.ReadOnly = read_only
         self.Application = None
+        self.ID = id(self)
+        self.Pages = FakePages(pages if pages is not None else [FakePage()])
+        self.calls = []
+
+    def Save(self):
+        self.calls.append(("Save",))
+        self.Saved = True
+
+    def SaveAs(self, path):
+        self.calls.append(("SaveAs", path))
+        self.Saved = True
+
+    def ExportAsFixedFormat(self, *args):
+        self.calls.append(("ExportAsFixedFormat", *args))
+
+    def Close(self):
+        self.calls.append(("Close", self.Saved))
+        self.Application.docs.remove(self)
 
 
 class FakeDocuments:
     def __init__(self, app):
         self._app = app
+        self.added = []
+        self.opened = []
+
+    def AddEx(self, path, measure, flags):
+        self.added.append((path, measure, flags))
+        document = FakeDoc("Drawing1", folder="")
+        document.Application = self._app
+        self._app.docs.append(document)
+        return document
+
+    def OpenEx(self, path, flags):
+        self.opened.append((path, flags))
+        document = FakeDoc(path.rsplit("\\", 1)[-1], folder=path.rsplit("\\", 1)[0])
+        document.Application = self._app
+        self._app.docs.append(document)
+        return document
 
     @property
     def Count(self):
@@ -46,6 +137,7 @@ class FakeApp:
         self.busy_calls = 0
         self.dead = False
         self.rejecting = False
+        self.ActiveWindow = None
         self.Documents = FakeDocuments(self)
         self.CurrentScope = -1
         self.scopes_begun = []
