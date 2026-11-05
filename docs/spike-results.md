@@ -44,6 +44,8 @@ Throwaway scripts ran against real Visio before any tool code was written, to se
 - **Closing a drawing can close its stencils.** Iterating `Documents` while closing fails with "Invalid document identifier". Snapshot names and re-check.
 - **`GluedShapes` needs three arguments** under late binding: `(flags, "", None)`.
 - **`_U` and `_M` are US and metric masters.** Process in `BASFLO_U` is 1 in wide; in `BASFLO_M`, 25 mm.
+- **"Windows fatal exception: code 0x80010001" under pytest is not a crash.** COM raises call rejections as Windows exceptions, and pytest's faulthandler prints a dump even when Python catches them. The tests pass with it on. The project turns it off.
+- **Visio takes a moment to exit after `Quit`.** A process check straight afterwards can still find it.
 
 ## Not tested
 

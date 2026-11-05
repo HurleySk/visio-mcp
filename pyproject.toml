@@ -35,7 +35,8 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 pythonpath = ["."]
 markers = ["visio: needs a real Microsoft Visio, and opens scratch drawings in it"]
-addopts = "-m 'not visio'"
+# faulthandler prints a "Windows fatal exception" dump for every COM rejection, even a caught one.
+addopts = "-m 'not visio' -p no:faulthandler"
 
 [project.urls]
 "Homepage" = "https://github.com/HurleySk/visio-mcp"

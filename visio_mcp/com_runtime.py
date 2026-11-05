@@ -22,6 +22,17 @@ _sleep = time.sleep
 VISIO_CLSID = "{00021A20-0000-0000-C000-000000000046}"
 VISIO_EXTENSIONS = (".vsdx", ".vsdm", ".vsd", ".vdx", ".vstx", ".vstm", ".vst")
 VIS_TYPE_STENCIL = 2
+NO_SCOPE = -1
+
+NOT_ATTACHED = ("visio_not_running", "visio_unreachable")
+LAUNCH_GRACE = 90.0
+START_WAIT = 45.0
+SCOPE_WAIT = 2.0
+LEFTOVER_SCOPE_LIMIT = 16
+
+_launch_lock = threading.Lock()
+_last_launch = None
+_stuck_edits = []
 
 
 class Win32Connector:
@@ -122,7 +133,12 @@ class VisioSession:
     def __init__(self, connector):
         self._connector = connector
         self._app = None
+        self._scope = None
+        self._label = None
         self.last_error = None
+        self.attach_error = None
+        self.abandoned = False
+        self.warnings = []
 
     @property
     def app(self):
@@ -136,6 +152,104 @@ class VisioSession:
 
     def drop(self):
         self._app = None
+
+    def prepare(self, start):
+        """Apply a tool's start policy: never, if_missing or report."""
+        self.attach_error = None
+        if start == "if_missing":
+            self._start_if_missing()
+        elif start == "report":
+            try:
+                self.wait_until_ready()
+            except VisioError as err:
+                if err.code not in NOT_ATTACHED:
+                    raise
+                self.attach_error = err
+        else:
+            self.wait_until_ready()
+
+    def _ready_if_attached(self):
+        try:
+            self.wait_until_ready()
+        except VisioError as err:
+            if err.code not in NOT_ATTACHED:
+                raise
+            return False
+        return True
+
+    def _start_if_missing(self):
+        global _last_launch
+        if self._ready_if_attached():
+            return
+        # Only our own launch is worth waiting for. An unreachable instance may
+        # stay that way, and every launch makes a new process, so start another.
+        with _launch_lock:
+            now = _clock()
+            if _last_launch is None or now - _last_launch > LAUNCH_GRACE:
+                self._connector.launch()
+                _last_launch = now
+        deadline = _clock() + START_WAIT
+        while not self._ready_if_attached():
+            if _clock() >= deadline:
+                raise VisioError(
+                    "visio_start_timeout",
+                    f"Visio did not become reachable within {START_WAIT:g} seconds of starting",
+                    retryable=True,
+                    hint="Visio may still be starting. Retry shortly.",
+                )
+            _sleep(0.25)
+
+    def begin_call(self, label):
+        self.last_error = None
+        self.warnings = []
+        self._scope = None
+        self._label = label
+
+    def open_scope(self, app):
+        """Open this call's undo scope. Later calls in the same tool call share it."""
+        if self._scope is not None:
+            return
+        self._close_leftover_scope(app)
+        self._scope = (app, app.BeginUndoScope(self._label))
+
+    def _close_leftover_scope(self, app):
+        # Scopes outlive the client that opened them, and any edit made while one
+        # is open joins it. Commit, because a rollback would take the user's edits too.
+        deadline = _clock() + SCOPE_WAIT
+        closed = 0
+        while app.CurrentScope != NO_SCOPE and closed < LEFTOVER_SCOPE_LIMIT:
+            if _clock() < deadline:
+                _sleep(0.1)
+                continue
+            app.EndUndoScope(app.CurrentScope, True)
+            closed += 1
+        if closed:
+            self.warnings.append(
+                {
+                    "code": "recovered_scope",
+                    "message": "Closed an undo scope left open by an earlier edit. Its changes were kept and may share one undo step with edits made while it was open.",
+                }
+            )
+
+    def commit_scope(self):
+        if self._scope is None:
+            return
+        app, scope = self._scope
+        self._scope = None
+        app.EndUndoScope(scope, True)
+
+    def rollback_scope(self):
+        """Returns None when there was no scope, else whether the rollback worked."""
+        if self._scope is None:
+            return None
+        app, scope = self._scope
+        self._scope = None
+        try:
+            app.EndUndoScope(scope, False)
+        except Exception:
+            logger.exception("undo scope rollback failed")
+            return False
+        return True
 
     def pause(self, seconds):
         _sleep(seconds)
@@ -174,13 +288,14 @@ class ComWorker:
     def __init__(self, connector):
         self._connector = connector
         self._queue = queue.SimpleQueue()
+        self._session = None
         self.poisoned = False
         self._thread = threading.Thread(target=self._run, name="visio-com", daemon=True)
         self._thread.start()
 
-    def submit(self, fn):
+    def submit(self, fn, start="never"):
         future = concurrent.futures.Future()
-        self._queue.put((fn, future))
+        self._queue.put((fn, start, future))
         if self.poisoned:
             self.poison()
         return future
@@ -190,9 +305,13 @@ class ComWorker:
 
     def poison(self):
         self.poisoned = True
+        session = self._session
+        if session is not None:
+            # The caller has been told this call failed, so it must not commit.
+            session.abandoned = True
         while True:
             try:
-                _, future = self._queue.get_nowait()
+                _, _, future = self._queue.get_nowait()
             except queue.Empty:
                 return
             if future.set_running_or_notify_cancel():
@@ -203,17 +322,19 @@ class ComWorker:
         try:
             self._connector.thread_init()
             session = VisioSession(self._connector)
+            session.abandoned = self.poisoned
+            self._session = session
             _local.session = session
             while not self.poisoned:
                 try:
-                    fn, future = self._queue.get(timeout=0.1)
+                    fn, start, future = self._queue.get(timeout=0.1)
                 except queue.Empty:
                     self._connector.pump()
                     continue
                 if not future.set_running_or_notify_cancel():
                     continue
                 try:
-                    session.wait_until_ready()
+                    session.prepare(start)
                     future.set_result(fn(session))
                 except BaseException as exc:
                     future.set_exception(exc)
@@ -255,11 +376,13 @@ def configure(connector_factory, *, clock=time.monotonic, sleep=time.sleep):
 
 
 def reset():
-    global _worker, _connector_factory, _clock, _sleep
+    global _worker, _connector_factory, _clock, _sleep, _last_launch
     with _lock:
         if _worker is not None:
             _worker.poison()
         _worker = None
+        _stuck_edits.clear()
+    _last_launch = None
     _connector_factory = None
     _clock = time.monotonic
     _sleep = time.sleep
@@ -274,9 +397,25 @@ def _get_worker():
         return _worker
 
 
-async def run_com(fn, *, timeout=60.0, mutates=False):
+def _refuse_while_an_edit_is_stuck():
+    # An open scope sweeps in any edit made meanwhile, and the timed-out edit's
+    # rollback would then undo that too.
+    with _lock:
+        _stuck_edits[:] = [future for future in _stuck_edits if not future.done()]
+        if _stuck_edits:
+            raise VisioError(
+                "edit_in_progress",
+                "An earlier edit that timed out is still running in Visio",
+                retryable=True,
+                hint="Close any dialog open in Visio. The earlier edit rolls back when it ends, then this can be retried.",
+            )
+
+
+async def run_com(fn, *, timeout=60.0, mutates=False, start="never"):
+    if mutates:
+        _refuse_while_an_edit_is_stuck()
     worker = _get_worker()
-    future = worker.submit(fn)
+    future = worker.submit(fn, start)
     try:
         return await asyncio.wait_for(asyncio.wrap_future(future), timeout)
     except asyncio.TimeoutError:
@@ -285,6 +424,9 @@ async def run_com(fn, *, timeout=60.0, mutates=False):
         if future.done():
             return future.result()
         worker.poison()
+        if mutates:
+            with _lock:
+                _stuck_edits.append(future)
         raise _timeout_error(f"Visio did not respond within {timeout:g} seconds", applied=mutates) from None
 
 
@@ -365,3 +507,23 @@ def find_document(app, drawing=None):
         f"Drawing '{drawing}' is not open in Visio. Open drawings: {[d.Name for d in drawings]}",
         hint="Pass one of the open drawing names, or omit drawing to use the active one.",
     )
+
+
+def edit_doc(drawing=None):
+    """Find a drawing for editing and open this call's undo scope on its Visio.
+
+    Call it after validating, so a bad request opens no scope. The scope belongs to
+    the drawing's own instance, which need not be the one this session attached to.
+    """
+    session = current_session()
+    if session is None:
+        raise VisioError("internal", "edit_doc was called off the COM thread")
+    document = find_document(session.app, drawing)
+    if document.ReadOnly:
+        raise VisioError(
+            "read_only",
+            f"Drawing '{document.Name}' is open read-only",
+            hint="Save a copy with visio_save(path=...), which is writable, then edit that.",
+        )
+    session.open_scope(document.Application)
+    return document
