@@ -20,6 +20,25 @@ def pid_of(app):
     return win32process.GetWindowThreadProcessId(app.WindowHandle32)[1]
 
 
+def dialogs_of(pid):
+    import win32gui
+    import win32process
+
+    found = []
+
+    def visit(hwnd, _):
+        if (
+            win32process.GetWindowThreadProcessId(hwnd)[1] == pid
+            and win32gui.IsWindowVisible(hwnd)
+            and win32gui.GetClassName(hwnd) == "#32770"
+        ):
+            found.append(hwnd)
+        return True
+
+    win32gui.EnumWindows(visit, None)
+    return found
+
+
 def launch_own():
     """Start a new instance and return it, once attach reaches that instance."""
     connector = com_runtime.Win32Connector()

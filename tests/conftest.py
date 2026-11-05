@@ -3,9 +3,17 @@ import zipfile
 import pytest
 
 from tests.fakes import FakeConnector
-from visio_mcp import com_runtime, stencil_index
+from visio_mcp import com_runtime, events, stencil_index
 
 NS = "http://schemas.microsoft.com/office/visio/2012/main"
+
+
+@pytest.fixture(autouse=True)
+def events_marker(tmp_path, monkeypatch):
+    """Keeps tests away from the marker of a real server running on this PC."""
+    marker = tmp_path / "visio-mcp-marker" / "events-off"
+    monkeypatch.setattr(events, "_marker", lambda: str(marker))
+    return marker
 
 
 @pytest.fixture

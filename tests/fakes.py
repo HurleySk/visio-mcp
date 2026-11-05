@@ -125,10 +125,12 @@ class FakeDocuments:
     def __init__(self, app):
         self._app = app
         self.added = []
+        self.events_while_adding = []
         self.opened = []
 
     def AddEx(self, path, measure, flags):
         self.added.append((path, measure, flags))
+        self.events_while_adding.append(self._app.EventsEnabled)
         document = FakeDoc("Drawing1", folder="")
         document.Application = self._app
         self._app.docs.append(document)
@@ -162,6 +164,7 @@ class FakeApp:
         self.busy_calls = 0
         self.dead = False
         self.rejecting = False
+        self.EventsEnabled = -1
         self.ActiveWindow = None
         self.Documents = FakeDocuments(self)
         self.CurrentScope = -1

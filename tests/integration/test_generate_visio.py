@@ -4,7 +4,8 @@ import os
 import pytest
 from fastmcp import Client
 
-from visio_mcp import building, server, stencil_index
+from tests.integration.helpers import dialogs_of, pid_of
+from visio_mcp import building, events, server, stencil_index
 from visio_mcp.models import DiagramSpec
 from visio_mcp.tools import diagnose, generate
 
@@ -14,6 +15,7 @@ VIS_MS_US = 2
 VIS_OPEN_RO_HIDDEN = 2 + 64
 VIS_ADD_STENCIL = 512
 VIS_TYPE_STENCIL = 2
+VIS_SECTION_USER = 242
 
 FLOW = {
     "nodes": [
@@ -144,6 +146,69 @@ async def test_a_custom_open_stencil_works(made, tmp_path):
         page = made.Documents(result["drawing"]).Pages(result["page"])
         assert page.Shapes.ItemFromID(result["ids"]["a"]).Master.NameU == "Widget"
         assert "Mine.vssx" in _documents(made)
+    finally:
+        stencil.Close()
+
+
+@pytest.fixture
+def no_dialog_left(own_visio):
+    """If a guard fails, a dialog would block the whole module, so clear it and fail just this."""
+    import win32con
+    import win32gui
+
+    yield
+    left = dialogs_of(pid_of(own_visio))
+    for hwnd in left:
+        win32gui.PostMessage(hwnd, win32con.WM_CLOSE, 0, 0)
+    assert not left
+    assert own_visio.EventsEnabled == events.EVENTS_ON
+
+
+def _warned(result, code):
+    return [warning["message"] for warning in result.get("warnings", []) if warning["code"] == code]
+
+
+async def test_org_chart_masters_do_not_block(made, no_dialog_left):
+    result = await _create(
+        nodes=[
+            {"key": "boss", "master": "ORGCH:Executive", "text": "Boss"},
+            {"key": "ann", "master": "ORGCH:Position", "text": "Ann"},
+            {"key": "bob", "master": "ORGCH:Position", "text": "Bob"},
+        ],
+        edges=[{"from": "boss", "to": "ann"}, {"from": "boss", "to": "bob"}],
+    )
+    assert "error" not in result, result
+    page = made.Documents(result["drawing"]).Pages(result["page"])
+    assert page.Shapes.ItemFromID(result["ids"]["ann"]).Text == "Ann"
+    message = _warned(result, "drop_handler_skipped")[0]
+    assert "ORGCH:Executive" in message
+    assert "ORGCH:Position" in message
+    assert result["issues"] == []
+
+
+async def test_an_off_page_reference_does_not_block(made, no_dialog_left):
+    result = await _create(nodes=[{"key": "a", "master": "BASFLO:Off-page reference", "text": "To page 2"}])
+    assert "error" not in result, result
+    assert _warned(result, "drop_handler_skipped")
+
+
+async def test_a_handler_that_only_sets_up_the_shape_still_runs(made, tmp_path):
+    stencil = made.Documents.AddEx("", VIS_MS_US, VIS_ADD_STENCIL)
+    source = made.Documents.AddEx("", VIS_MS_US, 0)
+    shape = source.Pages(1).DrawRectangle(1, 1, 2, 2)
+    shape.AddNamedRow(VIS_SECTION_USER, "Ran", 0)
+    shape.CellsU("User.Ran").FormulaU = "0"
+    shape.CellsU("EventDrop").FormulaU = "SETF(GetRef(User.Ran),1)"
+    stencil.Masters.Drop(shape, 0, 0).Name = "Setup"
+    source.Saved = True
+    source.Close()
+    stencil.SaveAs(str(tmp_path / "Handlers.vssx"))
+    try:
+        result = await _create(nodes=[{"key": "a", "master": "Handlers:Setup"}])
+        assert "error" not in result, result
+        assert not _warned(result, "drop_handler_skipped")
+        page = made.Documents(result["drawing"]).Pages(result["page"])
+        assert page.Shapes.ItemFromID(result["ids"]["a"]).CellsU("User.Ran").ResultIU == 1
     finally:
         stencil.Close()
 

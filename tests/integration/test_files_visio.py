@@ -4,7 +4,8 @@ import os
 import pytest
 from PIL import Image
 
-from visio_mcp import stencil_index
+from tests.integration.helpers import dialogs_of, pid_of
+from visio_mcp import events, stencil_index
 from visio_mcp.tools import files, masters
 
 pytestmark = pytest.mark.visio
@@ -142,6 +143,25 @@ async def test_template_by_name_opens_its_stencils(visio):
         assert "BASFLO_U.VSSX" in names
     finally:
         await _call(files.visio_close_drawing, discard=True, drawing=made["drawing"])
+
+
+@pytest.mark.parametrize("template", ["GANTT", "XFUNC", "ORGWIZ"])
+async def test_a_template_with_a_wizard_opens_without_it(visio, template):
+    import win32con
+    import win32gui
+
+    stencil_index.reset()
+    made = await _call(files.visio_new_drawing, template, "us")
+    left = dialogs_of(pid_of(visio))
+    for hwnd in left:
+        win32gui.PostMessage(hwnd, win32con.WM_CLOSE, 0, 0)
+    try:
+        assert "error" not in made, made
+        assert not left
+        assert visio.EventsEnabled == events.EVENTS_ON
+    finally:
+        if "drawing" in made:
+            await _call(files.visio_close_drawing, discard=True, drawing=made["drawing"])
 
 
 async def test_installed_shapes_are_searchable():

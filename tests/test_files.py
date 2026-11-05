@@ -34,6 +34,19 @@ async def test_new_drawing_resolves_a_template_name(app, monkeypatch):
     assert app.Documents.added == [("C:\\content\\BASFLO_metric.VSTX", files.VIS_MS_METRIC, 0)]
 
 
+async def test_a_template_opens_with_events_off_so_its_wizard_cannot_block(app, monkeypatch, events_marker):
+    monkeypatch.setattr(stencil_index, "resolve_template", lambda name, units: f"C:\\content\\{name}_{units}.VSTX")
+    await _call(files.visio_new_drawing, "GANTT", "us")
+    assert app.Documents.events_while_adding == [0]
+    assert app.EventsEnabled == -1
+    assert not events_marker.exists()
+
+
+async def test_a_blank_drawing_keeps_events_on(app):
+    await _call(files.visio_new_drawing)
+    assert app.Documents.events_while_adding == [-1]
+
+
 async def test_new_drawing_rejects_a_missing_template_path(app, tmp_path):
     result = await _call(files.visio_new_drawing, str(tmp_path / "missing.vstx"))
     assert result["code"] == "file_not_found"

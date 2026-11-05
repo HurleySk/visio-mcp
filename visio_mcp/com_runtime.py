@@ -9,6 +9,7 @@ import threading
 import time
 import unicodedata
 
+from visio_mcp import events
 from visio_mcp.errors import MK_E_UNAVAILABLE, BUSY_HRESULTS, VisioError, busy_error, classify
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,7 @@ NO_SCOPE = -1
 
 NOT_ATTACHED = ("visio_not_running", "visio_unreachable")
 LAUNCH_GRACE = 90.0
+LAUNCH_ERROR_WAIT = 3.0
 START_WAIT = 45.0
 SCOPE_WAIT = 2.0
 LEFTOVER_SCOPE_LIMIT = 16
@@ -66,6 +68,12 @@ class Win32Connector:
         for document in self.other_documents():
             return document.Application
         if self.process_running():
+            if self.rights_differ():
+                raise VisioError(
+                    "visio_unreachable",
+                    "Visio is running with different administrator rights from this server, so Windows blocks the connection",
+                    hint="Start Visio and the app running this server the same way: both as administrator, or neither.",
+                )
             raise VisioError(
                 "visio_unreachable",
                 "Visio is running but cannot be reached",
@@ -109,24 +117,78 @@ class Win32Connector:
             return getattr(exc, "hresult", None) in BUSY_HRESULTS
         return False
 
-    def process_running(self):
-        result = subprocess.run(
-            ["tasklist", "/FI", "IMAGENAME eq VISIO.EXE", "/NH"],
+    def visio_pids(self):
+        listing = subprocess.run(
+            ["tasklist", "/FI", "IMAGENAME eq VISIO.EXE", "/FO", "CSV", "/NH"],
             capture_output=True,
             text=True,
             creationflags=subprocess.CREATE_NO_WINDOW,
+        ).stdout
+        return [int(line.split('","')[1]) for line in listing.splitlines() if "VISIO.EXE" in line.upper()]
+
+    def process_running(self):
+        return bool(self.visio_pids())
+
+    def elevated(self, pid=None):
+        """Whether a process runs as administrator: this one, or the one with this ID."""
+        import win32api
+        import win32con
+        import win32security
+
+        process = (
+            win32api.GetCurrentProcess()
+            if pid is None
+            else win32api.OpenProcess(win32con.PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
         )
-        return "VISIO.EXE" in result.stdout.upper()
+        token = win32security.OpenProcessToken(process, win32con.TOKEN_QUERY)
+        return bool(win32security.GetTokenInformation(token, win32security.TokenElevation))
+
+    def rights_differ(self):
+        """Windows hides COM objects from a process running with different administrator rights."""
+        mine = self.elevated()
+        for pid in self.visio_pids():
+            try:
+                if self.elevated(pid) != mine:
+                    return True
+            except Exception:
+                # Only a process with more rights than this one refuses to say.
+                if not mine:
+                    return True
+        return False
 
     def launch(self):
-        try:
-            os.startfile("visio.exe")
-        except OSError as exc:
+        """Ask COM to start Visio, rather than starting it from this process.
+
+        Some MCP clients run servers in a Windows Job that kills everything in it when the
+        client exits. A child of this server would be in that Job, and unsaved work would die
+        with it. COM's launcher starts Visio outside the Job, with this process's rights.
+
+        Activation waits out Visio's boot and any question it asks at start-up. So it gets a
+        thread of its own, and the caller goes on to poll attach, which has a time limit.
+        """
+        import pythoncom
+
+        failure = []
+
+        def activate():
+            pythoncom.CoInitialize()
+            try:
+                # Letting go of this at once doesn't close Visio.
+                pythoncom.CoCreateInstance(VISIO_CLSID, None, pythoncom.CLSCTX_LOCAL_SERVER, pythoncom.IID_IDispatch)
+            except pythoncom.com_error as exc:
+                failure.append(exc)
+            finally:
+                pythoncom.CoUninitialize()
+
+        thread = threading.Thread(target=activate, name="visio-launch", daemon=True)
+        thread.start()
+        thread.join(LAUNCH_ERROR_WAIT)
+        if failure:
             raise VisioError(
                 "visio_not_installed",
-                f"Could not start Microsoft Visio: {exc}",
+                f"Could not start Microsoft Visio: {failure[0]}",
                 hint="Install Visio, or open it by hand and retry.",
-            ) from exc
+            ) from failure[0]
 
 
 class VisioSession:
@@ -140,6 +202,7 @@ class VisioSession:
         self.attach_error = None
         self.abandoned = False
         self.warnings = []
+        self._start_warnings = []
 
     @property
     def app(self):
@@ -157,6 +220,7 @@ class VisioSession:
     def prepare(self, start):
         """Apply a tool's start policy: never, if_missing or report."""
         self.attach_error = None
+        self._start_warnings = []
         if start == "if_missing":
             self._start_if_missing()
         elif start == "report":
@@ -168,19 +232,38 @@ class VisioSession:
                 self.attach_error = err
         else:
             self.wait_until_ready()
+        self._restore_lost_events()
 
-    def _ready_if_attached(self):
+    def _restore_lost_events(self):
+        if self._app is None:
+            return
+        try:
+            restored = events.restore_if_lost(self._app)
+        except Exception:
+            logger.warning("could not turn Visio's events back on", exc_info=True)
+            return
+        if restored:
+            self._start_warnings.append(
+                {
+                    "code": "events_restored",
+                    "message": "An earlier server stopped while it had Visio's automation events off, so this call turned them back on.",
+                }
+            )
+
+    def _attach_failure(self):
+        """Why Visio can't be reached yet, or None once it can."""
         try:
             self.wait_until_ready()
         except VisioError as err:
             if err.code not in NOT_ATTACHED:
                 raise
-            return False
-        return True
+            return err
+        return None
 
     def _start_if_missing(self):
         global _last_launch
-        if self._ready_if_attached():
+        failure = self._attach_failure()
+        if failure is None:
             return
         # Only our own launch is worth waiting for. An unreachable instance may
         # stay that way, and every launch makes a new process, so start another.
@@ -190,19 +273,27 @@ class VisioSession:
                 self._connector.launch()
                 _last_launch = now
         deadline = _clock() + START_WAIT
-        while not self._ready_if_attached():
+        while self._attach_failure() is not None:
             if _clock() >= deadline:
                 raise VisioError(
                     "visio_start_timeout",
                     f"Visio did not become reachable within {START_WAIT:g} seconds of starting",
                     retryable=True,
-                    hint="Visio may still be starting. Retry shortly.",
+                    hint="Visio may still be starting, or asking a question on screen. Answer it if so, then retry.",
                 )
             _sleep(0.25)
+        if failure.code == "visio_unreachable":
+            self._start_warnings.append(
+                {
+                    "code": "second_visio",
+                    "message": f"{failure.message}. This started a new window, so drawings open in the other one aren't available here.",
+                }
+            )
 
     def begin_call(self, label):
         self.last_error = None
-        self.warnings = []
+        # A read that is retried still has to say what happened before it.
+        self.warnings = list(self._start_warnings)
         self._scope = None
         self._label = label
         self._on_failure = []

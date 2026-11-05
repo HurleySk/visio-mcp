@@ -4,7 +4,7 @@ import threading
 import pytest
 
 from tests.integration.conftest import VIS_MS_US
-from tests.integration.helpers import launch_own, pid_of, pids, until
+from tests.integration.helpers import dialogs_of, launch_own, pid_of, pids, until
 from visio_mcp import com_runtime
 from visio_mcp.com_runtime import NO_SCOPE, current_session, drawings_in, edit_doc
 from visio_mcp.live_tool import live_tool
@@ -13,25 +13,6 @@ pytestmark = pytest.mark.visio
 
 VIS_OPEN_RO = 2
 VIS_CMD_PAGE_SETUP = 1076
-
-
-def _dialogs_of(pid):
-    import win32gui
-    import win32process
-
-    found = []
-
-    def visit(hwnd, _):
-        if (
-            win32process.GetWindowThreadProcessId(hwnd)[1] == pid
-            and win32gui.IsWindowVisible(hwnd)
-            and win32gui.GetClassName(hwnd) == "#32770"
-        ):
-            found.append(hwnd)
-        return True
-
-    win32gui.EnumWindows(visit, None)
-    return found
 
 
 @live_tool(mutates=False)
@@ -183,12 +164,12 @@ async def test_open_dialog_is_reported_as_modal_dialog(scratch, own_visio):
     opener = threading.Thread(target=open_dialog, daemon=True)
     opener.start()
     try:
-        await until(lambda: _dialogs_of(pid))
+        await until(lambda: dialogs_of(pid))
         result = json.loads(await visio_names())
         assert result["code"] == "modal_dialog"
         assert result["retryable"] is True
     finally:
-        for hwnd in _dialogs_of(pid):
+        for hwnd in dialogs_of(pid):
             win32gui.PostMessage(hwnd, win32con.WM_CLOSE, 0, 0)
         opener.join(10)
     assert not opener.is_alive()

@@ -112,7 +112,7 @@ async def test_an_unreachable_visio_gets_a_new_instance_rather_than_a_wait():
     clock = FakeClock()
     com_runtime.configure(lambda: fake, clock=clock, sleep=clock.sleep)
     try:
-        assert json.loads(await create_tool()) == {"docs": 0}
+        assert json.loads(await create_tool())["docs"] == 0
         assert fake.launch_count == 1
         assert clock.now < 1.0
     finally:

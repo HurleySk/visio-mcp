@@ -7,7 +7,7 @@ from visio_mcp.com_runtime import current_session, edit_doc, find_document
 from visio_mcp.live_tool import live_tool
 from visio_mcp.models import DiagramSpec, check_graph, check_spacing, resolve_layout
 from visio_mcp.tools.diagnose import report
-from visio_mcp.tools.files import MEASURES, save_target, template_source
+from visio_mcp.tools.files import new_drawing, save_target, template_source
 from visio_mcp.tools.image import render_page
 from visio_mcp.tools.read import page_info
 
@@ -44,6 +44,9 @@ def _build(document, page, spec, layout):
             node.key: drop_node(page, pool, node, refs[node.master], index, placeable)
             for index, node in enumerate(spec.nodes)
         }
+        warning = pool.skipped_warning()
+        if warning:
+            current_session().warnings.append(warning)
     finally:
         pool.close()
     connectors = [
@@ -77,7 +80,7 @@ def visio_create_diagram(spec: DiagramSpec):
     app = session.app
     _check_masters_early(app, spec)
 
-    document = app.Documents.AddEx(source, MEASURES[spec.units], 0)
+    document = new_drawing(app, source, spec.units)
     session.on_failure(lambda: _close_new_drawing(session, document))
     session.open_scope(app)
     page = document.Pages(1)

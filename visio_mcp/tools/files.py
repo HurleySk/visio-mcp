@@ -6,6 +6,7 @@ from visio_mcp import stencil_index
 from visio_mcp.addressing import find_page, summarize
 from visio_mcp.com_runtime import current_session, find_document
 from visio_mcp.errors import VisioError
+from visio_mcp.events import events_off
 from visio_mcp.live_tool import live_tool
 
 VIS_MS_DEFAULT = 0
@@ -70,6 +71,16 @@ def template_source(template, units):
     return source
 
 
+def new_drawing(app, source, units):
+    """Some templates open a wizard as they open, such as Gantt, org chart wizard and
+    cross-functional flowchart, and it would block this call. With events off they open
+    as they would after closing it."""
+    if not source:
+        return app.Documents.AddEx("", MEASURES[units], 0)
+    with events_off(app):
+        return app.Documents.AddEx(source, MEASURES[units], 0)
+
+
 def save_target(path, overwrite):
     target = _absolute(path)
     if _suffix(target) not in SAVE_SUFFIXES:
@@ -87,7 +98,7 @@ def visio_new_drawing(template: str | None = None, units: Literal["us", "metric"
     if units not in MEASURES:
         raise ValueError("units must be 'us' or 'metric'.")
     source = template_source(template, units)
-    document = current_session().app.Documents.AddEx(source, MEASURES[units], 0)
+    document = new_drawing(current_session().app, source, units)
     return json.dumps(summarize(document), ensure_ascii=False)
 
 

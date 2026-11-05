@@ -6,6 +6,7 @@ import re
 from visio_mcp import stencil_index
 from visio_mcp.com_runtime import VIS_TYPE_STENCIL
 from visio_mcp.errors import VisioError
+from visio_mcp.events import events_off
 from visio_mcp.stencil_index import MasterRef, stencil_stem
 from visio_mcp.tools.read import VIS_SECTION_PROP, shape_data
 
@@ -26,6 +27,13 @@ WEST_EAST = {"flowchart": 6, "tree": 8, "right_angle": 1, "straight": 2}
 START_X = 1.0
 START_Y = 10.0
 START_STEP = 0.25
+VIS_TYPE_GROUP = 2
+# Drop handlers that can open something and block the call. Others, such as
+# SETF(GetRef(HideText),FALSE), finish setting the shape up, so they have to keep running.
+INTERACTIVE_HANDLER = re.compile(
+    "RUNADDON|DOCMD|OPENTEXTWIN|OPENSHEET|OPENGROUPWIN|OPENFILE|OPENPAGE|CALLTHIS|RUNMACRO|GOTOPAGE|HYPERLINK",
+    re.IGNORECASE,
+)
 
 
 def drawing_units(document):
@@ -144,15 +152,50 @@ class MasterResolver:
         return stencil_index.resolve_master(name, self._units, within=installed)
 
 
+def _opens_something_on_drop(shapes):
+    for index in range(1, shapes.Count + 1):
+        shape = shapes(index)
+        if shape.CellExistsU("EventDrop", 0) and INTERACTIVE_HANDLER.search(shape.CellsU("EventDrop").FormulaU):
+            return True
+        if shape.Type == VIS_TYPE_GROUP and _opens_something_on_drop(shape.Shapes):
+            return True
+    return False
+
+
 class StencilPool:
-    """Gets masters for one call. Reuses an open stencil, otherwise opens it hidden and closes
-    it again afterwards, because a hidden stencil left open outlives its drawing."""
+    """Gets masters for one call and drops them. Reuses an open stencil, otherwise opens it hidden
+    and closes it again afterwards, because a hidden stencil left open outlives its drawing."""
 
     def __init__(self, app, document):
         self._app = app
         self._document = document
         self._stencils = {}
         self._opened = []
+        self._interactive = {}
+        self._skipped = []
+
+    def drop(self, page, ref, x, y):
+        """Some masters run an add-on when dropped, and its dialog would block this call until
+        it timed out. Those alone drop with events off, so the rest still set themselves up."""
+        master = self.master(ref)
+        key = (ref.path, ref.name)
+        if key not in self._interactive:
+            self._interactive[key] = _opens_something_on_drop(master.Shapes)
+        if not self._interactive[key]:
+            return page.Drop(master, x, y)
+        label = f"{ref.stem}:{ref.name}" if ref.stem else ref.name
+        if label not in self._skipped:
+            self._skipped.append(label)
+        with events_off(self._app):
+            return page.Drop(master, x, y)
+
+    def skipped_warning(self):
+        if not self._skipped:
+            return None
+        return {
+            "code": "drop_handler_skipped",
+            "message": f"Skipped what these masters normally run when dropped, because it opens a dialog: {', '.join(self._skipped)}.",
+        }
 
     def _find_open(self, key):
         documents = self._app.Documents
@@ -229,7 +272,7 @@ def drop_node(page, pool, node, ref, index, placeable):
         x, y = START_X + index * START_STEP, START_Y - index * START_STEP
     else:
         x, y = node.x, node.y
-    shape = page.Drop(pool.master(ref), x, y)
+    shape = pool.drop(page, ref, x, y)
     if node.w is not None:
         shape.CellsU("Width").ResultIU = node.w
     if node.h is not None:
