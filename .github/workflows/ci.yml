@@ -9,8 +9,9 @@ jobs:
   test:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      # No floating major tag from v8 on.
+      - uses: astral-sh/setup-uv@v10.3.3
       - run: uv lock --check
       - run: uv sync --locked --compile-bytecode
       - run: uv run pytest -v
