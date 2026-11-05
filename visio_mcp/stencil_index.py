@@ -183,8 +183,8 @@ def _score(library, master, phrase, tokens):
     return 0
 
 
-def _stem(reference):
-    stem = reference.strip().upper()
+def stencil_stem(reference):
+    stem = os.path.basename(reference.strip()).upper()
     return re.sub(r"_[UM]$", "", re.sub(r"\.VSSX$", "", stem))
 
 
@@ -195,7 +195,7 @@ def find_masters(query="", stencil=None, limit=25):
         raise ValueError("Pass a query, a stencil, or both.")
     libraries = stencils()
     if stencil:
-        libraries = {_stem(stencil): _library(libraries, stencil)}
+        libraries = {stencil_stem(stencil): _library(libraries, stencil)}
     tokens = _tokens(phrase)
     scored = []
     for library in libraries.values():
@@ -223,7 +223,7 @@ def _describe(library, master):
 
 
 def _library(libraries, reference):
-    stem = _stem(reference)
+    stem = stencil_stem(reference)
     library = libraries.get(stem)
     if library is None:
         close = difflib.get_close_matches(stem, list(libraries), n=5, cutoff=0.5)
@@ -303,9 +303,9 @@ def list_templates(query=None):
 
 
 def resolve_template(name, units="us"):
-    library = templates().get(_stem(re.sub(r"\.VSTX$", "", name, flags=re.IGNORECASE)))
+    library = templates().get(stencil_stem(re.sub(r"\.VSTX$", "", name, flags=re.IGNORECASE)))
     if library is None:
-        close = difflib.get_close_matches(_stem(name), list(templates()), n=5, cutoff=0.5)
+        close = difflib.get_close_matches(stencil_stem(name), list(templates()), n=5, cutoff=0.5)
         raise VisioError(
             "unknown_template",
             f"No installed template is called '{name}'",

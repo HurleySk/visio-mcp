@@ -135,6 +135,7 @@ class VisioSession:
         self._app = None
         self._scope = None
         self._label = None
+        self._on_failure = []
         self.last_error = None
         self.attach_error = None
         self.abandoned = False
@@ -204,6 +205,19 @@ class VisioSession:
         self.warnings = []
         self._scope = None
         self._label = label
+        self._on_failure = []
+
+    def on_failure(self, cleanup):
+        """Run this if the call fails, after its rollback, for what undo can't take back."""
+        self._on_failure.append(cleanup)
+
+    def run_failure_cleanups(self):
+        cleanups, self._on_failure = self._on_failure, []
+        for cleanup in cleanups:
+            try:
+                cleanup()
+            except Exception:
+                logger.exception("a cleanup after a failed edit failed")
 
     def open_scope(self, app):
         """Open this call's undo scope. Later calls in the same tool call share it."""

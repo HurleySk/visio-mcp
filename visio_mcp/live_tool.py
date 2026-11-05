@@ -47,11 +47,13 @@ def _call(session, body, args, kwargs):
     except Exception as exc:
         err = classify_live(exc)
         err.rolled_back = session.rollback_scope()
+        session.run_failure_cleanups()
         return _with_warnings(error_json(err), session.warnings)
     if session.abandoned:
         # The caller was already told this edit timed out.
         if session.rollback_scope() is False:
             logger.error("a timed-out edit could not be rolled back")
+        session.run_failure_cleanups()
         return result
     try:
         session.commit_scope()

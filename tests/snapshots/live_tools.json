@@ -6,6 +6,480 @@
       }
     },
     "annotations": {
+      "destructiveHint": false,
+      "readOnlyHint": false,
+      "title": "Create Visio Diagram"
+    },
+    "description": "Build a whole diagram in a new drawing in one call: shapes, glued connectors, layout and a picture.\n\nThis is the way to make a diagram. Find masters with visio_find_masters first, then pass\nthem all at once. It starts a visible Visio if none is running. A bad spec changes nothing,\nand one Ctrl+Z removes everything it adds. To add to an existing drawing, use visio_add_elements.\n\nReturns the drawing, its page, ids mapping your keys to shape IDs, the connectors, and\nissues found on the page, with a PNG to check the result by eye.",
+    "inputSchema": {
+      "properties": {
+        "spec": {
+          "additionalProperties": false,
+          "properties": {
+            "nodes": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "key": {
+                    "description": "Your name for this node, which edges and the returned ids use.",
+                    "type": "string"
+                  },
+                  "master": {
+                    "description": "A master like 'BASFLO:Decision'. Find one with visio_find_masters.",
+                    "type": "string"
+                  },
+                  "text": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null
+                  },
+                  "data": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": {
+                          "type": "string"
+                        },
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Shape Data fields, by label."
+                  },
+                  "x": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Centre, in inches from the page's left. Only with layout style 'none'."
+                  },
+                  "y": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Centre, in inches from the page's bottom. Only with layout style 'none'."
+                  },
+                  "w": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Width in inches. Leave out to use the master's."
+                  },
+                  "h": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Height in inches. Setting it stops the shape growing to fit its text."
+                  },
+                  "fill": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Fill colour as '#RRGGBB'."
+                  }
+                },
+                "required": [
+                  "key",
+                  "master"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "edges": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "from": {
+                    "description": "The key of the node it starts at.",
+                    "type": "string"
+                  },
+                  "to": {
+                    "description": "The key of the node it ends at.",
+                    "type": "string"
+                  },
+                  "text": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null
+                  },
+                  "arrow": {
+                    "default": "end",
+                    "enum": [
+                      "end",
+                      "both",
+                      "none"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "from",
+                  "to"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "layout": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "style": {
+                      "default": "top_down",
+                      "description": "top_down and left_right give the cleanest results. radial and circular are weaker. none keeps each node's x and y.",
+                      "enum": [
+                        "top_down",
+                        "left_right",
+                        "radial",
+                        "circular",
+                        "none"
+                      ],
+                      "type": "string"
+                    },
+                    "route": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "flowchart",
+                            "tree",
+                            "right_angle",
+                            "straight"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Connector style. Defaults to flowchart, or straight for radial and circular."
+                    },
+                    "spacing": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Gap between shapes in inches. Visio's default is 0.5."
+                    },
+                    "fit_page": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Resize the page to fit its shapes. Defaults to true, or false for style 'none', since it moves shapes."
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Defaults to top_down, or to none if the nodes have x and y."
+            },
+            "template": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "A name from visio_list_templates, or a template file's absolute path."
+            },
+            "units": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "us",
+                    "metric"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "stencils": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Stencils to search for masters named without one, like 'BASFLO'."
+            },
+            "save_as": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "An absolute path to save to."
+            },
+            "overwrite": {
+              "default": false,
+              "description": "Replace the file at save_as if there is one.",
+              "type": "boolean"
+            },
+            "return_image": {
+              "default": true,
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "nodes"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "spec"
+      ],
+      "type": "object",
+      "additionalProperties": false
+    },
+    "name": "visio_create_diagram",
+    "title": "Create Visio Diagram"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "readOnlyHint": false,
+      "title": "Lay Out Visio Page"
+    },
+    "description": "Lay out a page again, or only some of its shapes. Connectors stay glued, and one Ctrl+Z undoes it.\n\ntop_down and left_right give the cleanest results. radial and circular are weaker. route\ndefaults to flowchart, or straight for radial and circular. spacing is the gap in inches.\nshapes limits it to those shapes, as IDs, names or exact text. fit resizes the page to its\nshapes, by default only when laying out the whole page. Shapes with no connections stay where\nthey are unless they're marked placeable, so check the returned issues for overlaps.",
+    "inputSchema": {
+      "properties": {
+        "style": {
+          "default": "top_down",
+          "enum": [
+            "top_down",
+            "left_right",
+            "radial",
+            "circular"
+          ],
+          "type": "string"
+        },
+        "route": {
+          "anyOf": [
+            {
+              "enum": [
+                "flowchart",
+                "tree",
+                "right_angle",
+                "straight"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "spacing": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "shapes": {
+          "anyOf": [
+            {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "fit": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "drawing": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "page": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "type": "object",
+      "additionalProperties": false
+    },
+    "name": "visio_layout_page",
+    "title": "Lay Out Visio Page"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "title": "Diagnose Visio Page"
+    },
+    "description": "Check a page for overlapping shapes, shapes off the page, and connectors not glued at both ends.\n\nOverlaps compare shapes' boxes, so a container and its own members don't count.\nConnectors crossing shapes, and text too big for its shape, aren't checked, so look at\nvisio_get_page_image as well. Lists at most 50 issues, with issue_count saying if there are more.",
+    "inputSchema": {
+      "properties": {
+        "drawing": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "page": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "type": "object",
+      "additionalProperties": false
+    },
+    "name": "visio_diagnose_page",
+    "title": "Diagnose Visio Page"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "annotations": {
       "readOnlyHint": true,
       "title": "Find Visio Masters"
     },

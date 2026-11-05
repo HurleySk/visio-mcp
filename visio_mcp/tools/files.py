@@ -23,6 +23,9 @@ TEMPLATE_SUFFIXES = (".vstx", ".vstm", ".vst")
 EXPORT_SUFFIXES = {"png": ".png", "jpg": ".jpg", "svg": ".svg", "pdf": ".pdf"}
 
 
+MEASURES = {None: VIS_MS_DEFAULT, "us": VIS_MS_US, "metric": VIS_MS_METRIC}
+
+
 def _absolute(path):
     if not isinstance(path, str) or not os.path.isabs(path):
         raise ValueError(f"Path must be absolute, because Visio has its own working folder: {path!r}")
@@ -53,6 +56,27 @@ def _same_path(document, target):
     return bool(document.Path) and os.path.normcase(os.path.normpath(document.FullName)) == os.path.normcase(target)
 
 
+def template_source(template, units):
+    """What to pass Visio for a new drawing: a template file's path, or "" for a blank one."""
+    if not template:
+        return ""
+    if not os.path.isabs(template):
+        return stencil_index.resolve_template(template, units or "us")
+    source = os.path.normpath(template)
+    if not os.path.isfile(source):
+        raise VisioError("file_not_found", f"Template not found: {source}")
+    if _suffix(source) not in TEMPLATE_SUFFIXES:
+        raise ValueError(f"A template must be one of {TEMPLATE_SUFFIXES}: {source}")
+    return source
+
+
+def save_target(path, overwrite):
+    target = _absolute(path)
+    if _suffix(target) not in SAVE_SUFFIXES:
+        raise ValueError(f"A drawing must be saved as one of {SAVE_SUFFIXES}: {target}")
+    return _write_target(target, overwrite)
+
+
 @live_tool(mutates=True, start="if_missing")
 def visio_new_drawing(template: str | None = None, units: Literal["us", "metric"] | None = None):
     """Create a new drawing, starting a visible Visio if none is running.
@@ -60,20 +84,10 @@ def visio_new_drawing(template: str | None = None, units: Literal["us", "metric"
     template is a name from visio_list_templates or the absolute path of a template file.
     Omit it for a blank drawing. units picks US or metric paper and shapes.
     """
-    if units not in (None, "us", "metric"):
+    if units not in MEASURES:
         raise ValueError("units must be 'us' or 'metric'.")
-    measure = {None: VIS_MS_DEFAULT, "us": VIS_MS_US, "metric": VIS_MS_METRIC}[units]
-    source = ""
-    if template:
-        if os.path.isabs(template):
-            source = os.path.normpath(template)
-            if not os.path.isfile(source):
-                raise VisioError("file_not_found", f"Template not found: {source}")
-            if _suffix(source) not in TEMPLATE_SUFFIXES:
-                raise ValueError(f"A template must be one of {TEMPLATE_SUFFIXES}: {source}")
-        else:
-            source = stencil_index.resolve_template(template, units or "us")
-    document = current_session().app.Documents.AddEx(source, measure, 0)
+    source = template_source(template, units)
+    document = current_session().app.Documents.AddEx(source, MEASURES[units], 0)
     return json.dumps(summarize(document), ensure_ascii=False)
 
 
@@ -125,9 +139,7 @@ def visio_save(path: str | None = None, overwrite: bool = False, drawing: str | 
         document.Save()
     else:
         target = _absolute(path)
-        if _suffix(target) not in SAVE_SUFFIXES:
-            raise ValueError(f"A drawing must be saved as one of {SAVE_SUFFIXES}: {target}")
-        if _same_path(document, target):
+        if _same_path(document, target) and _suffix(target) in SAVE_SUFFIXES:
             if document.ReadOnly:
                 raise VisioError(
                     "read_only",
@@ -136,7 +148,7 @@ def visio_save(path: str | None = None, overwrite: bool = False, drawing: str | 
                 )
             document.Save()
         else:
-            document.SaveAs(_write_target(target, overwrite))
+            document.SaveAs(save_target(target, overwrite))
     return json.dumps(summarize(document), ensure_ascii=False)
 
 
